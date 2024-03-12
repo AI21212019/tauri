@@ -1,6 +1,6 @@
 [package]
 name = "tauri"
-version = "2.0.0-beta.8"
+version = "2.0.0-beta.11"
 description = "Make tiny, secure apps for all desktop platforms with Tauri"
 exclude = [ "/test", "/.scripts", "CHANGELOG.md", "/target" ]
 readme = "README.md"
@@ -50,10 +50,10 @@ uuid = { version = "1", features = [ "v4" ], optional = true }
 url = "2"
 anyhow = "1.0"
 thiserror = "1.0"
-tauri-runtime = { version = "2.0.0-beta.6", path = "../tauri-runtime" }
-tauri-macros = { version = "2.0.0-beta.6", path = "../tauri-macros" }
-tauri-utils = { version = "2.0.0-beta.6", features = [ "resources" ], path = "../tauri-utils" }
-tauri-runtime-wry = { version = "2.0.0-beta.6", path = "../tauri-runtime-wry", optional = true }
+tauri-runtime = { version = "2.0.0-beta.9", path = "../tauri-runtime" }
+tauri-macros = { version = "2.0.0-beta.9", path = "../tauri-macros" }
+tauri-utils = { version = "2.0.0-beta.9", features = [ "resources" ], path = "../tauri-utils" }
+tauri-runtime-wry = { version = "2.0.0-beta.9", path = "../tauri-runtime-wry", optional = true }
 getrandom = "0.2"
 serde_repr = "0.1"
 state = "0.6"
@@ -64,15 +64,15 @@ reqwest = { version = "0.11", default-features = false, features = [ "json", "st
 bytes = { version = "1", features = [ "serde" ] }
 raw-window-handle = "0.6"
 glob = "0.3"
+urlpattern = "0.2"
 mime = "0.3"
 data-url = { version = "0.3", optional = true }
 serialize-to-javascript = "=0.1.1"
-infer = { version = "0.15", optional = true }
-png = { version = "0.17", optional = true }
-ico = { version = "0.3.0", optional = true }
+image = { version = "0.24", default-features = false, optional = true }
 http-range = { version = "0.1.5", optional = true }
 tracing = { version = "0.1", optional = true }
 heck = "0.4"
+log = "0.4"
 
 [target."cfg(any(target_os = \"linux\", target_os = \"dragonfly\", target_os = \"freebsd\", target_os = \"openbsd\", target_os = \"netbsd\", target_os = \"windows\", target_os = \"macos\"))".dependencies]
 muda = { version = "0.11", default-features = false, features = [ "serde" ] }
@@ -96,9 +96,6 @@ window-vibrancy = "0.5"
   version = "0.52"
   features = [ "Win32_Foundation" ]
 
-[target."cfg(any(target_os = \"android\", target_os = \"ios\"))".dependencies]
-log = "0.4"
-
 [target."cfg(target_os = \"android\")".dependencies]
 jni = "0.21"
 
@@ -110,8 +107,8 @@ swift-rs = "1.0.6"
 
 [build-dependencies]
 heck = "0.4"
-tauri-build = { path = "../tauri-build/", default-features = false, version = "2.0.0-beta.6" }
-tauri-utils = { path = "../tauri-utils/", version = "2.0.0-beta.6", features = [ "build" ] }
+tauri-build = { path = "../tauri-build/", default-features = false, version = "2.0.0-beta.9" }
+tauri-utils = { path = "../tauri-utils/", version = "2.0.0-beta.9", features = [ "build" ] }
 
 [dev-dependencies]
 proptest = "1.4.0"
@@ -126,7 +123,7 @@ http-range = "0.1.5"
 
 [features]
 default = [ "wry", "compression", "objc-exception", "common-controls-v6" ]
-unstable = [ ]
+unstable = [ "tauri-runtime-wry/unstable" ]
 common-controls-v6 = [ "tray-icon?/common-controls-v6", "muda/common-controls-v6" ]
 tray-icon = [ "dep:tray-icon" ]
 tracing = [
@@ -155,8 +152,8 @@ webview-data-url = [ "data-url" ]
 protocol-asset = [ "http-range" ]
 config-json5 = [ "tauri-macros/config-json5" ]
 config-toml = [ "tauri-macros/config-toml" ]
-image-ico = [ "ico", "infer" ]
-image-png = [ "png", "infer" ]
+image-ico = [ "image/ico" ]
+image-png = [ "image/png" ]
 macos-proxy = [ "tauri-runtime-wry/macos-proxy" ]
 
 [[example]]

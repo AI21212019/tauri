@@ -12,13 +12,14 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use sha2::{Digest, Sha256};
 
+use syn::Expr;
 use tauri_utils::acl::capability::{Capability, CapabilityFile};
 use tauri_utils::acl::manifest::Manifest;
 use tauri_utils::acl::resolved::Resolved;
 use tauri_utils::assets::AssetKey;
 use tauri_utils::config::{CapabilityEntry, Config, FrontendDist, PatternKind};
 use tauri_utils::html::{
-  inject_nonce_token, parse as parse_html, serialize_node as serialize_html_node,
+  inject_nonce_token, parse as parse_html, serialize_node as serialize_html_node, NodeRef,
 };
 use tauri_utils::platform::Target;
 use tauri_utils::tokens::{map_lit, str_lit};
@@ -36,13 +37,34 @@ pub struct ContextData {
   pub root: TokenStream,
   /// Additional capabilities to include.
   pub capabilities: Option<Vec<PathBuf>>,
+  /// The custom assets implementation
+  pub assets: Option<Expr>,
+}
+
+fn inject_script_hashes(document: &NodeRef, key: &AssetKey, csp_hashes: &mut CspHashes) {
+  if let Ok(inline_script_elements) = document.select("script:not(empty)") {
+    let mut scripts = Vec::new();
+    for inline_script_el in inline_script_elements {
+      let script = inline_script_el.as_node().text_contents();
+      let mut hasher = Sha256::new();
+      hasher.update(&script);
+      let hash = hasher.finalize();
+      scripts.push(format!(
+        "'sha256-{}'",
+        base64::engine::general_purpose::STANDARD.encode(hash)
+      ));
+    }
+    csp_hashes
+      .inline_scripts
+      .entry(key.clone().into())
+      .or_default()
+      .append(&mut scripts);
+  }
 }
 
 fn map_core_assets(
   options: &AssetOptions,
 ) -> impl Fn(&AssetKey, &Path, &mut Vec<u8>, &mut CspHashes) -> Result<(), EmbeddedAssetsError> {
-  #[cfg(feature = "isolation")]
-  let pattern = tauri_utils::html::PatternObject::from(&options.pattern);
   let csp = options.csp;
   let dangerous_disable_asset_csp_modification =
     options.dangerous_disable_asset_csp_modification.clone();
@@ -55,38 +77,7 @@ fn map_core_assets(
         inject_nonce_token(&document, &dangerous_disable_asset_csp_modification);
 
         if dangerous_disable_asset_csp_modification.can_modify("script-src") {
-          if let Ok(inline_script_elements) = document.select("script:not(empty)") {
-            let mut scripts = Vec::new();
-            for inline_script_el in inline_script_elements {
-              let script = inline_script_el.as_node().text_contents();
-              let mut hasher = Sha256::new();
-              hasher.update(&script);
-              let hash = hasher.finalize();
-              scripts.push(format!(
-                "'sha256-{}'",
-                base64::engine::general_purpose::STANDARD.encode(hash)
-              ));
-            }
-            csp_hashes
-              .inline_scripts
-              .entry(key.clone().into())
-              .or_default()
-              .append(&mut scripts);
-          }
-        }
-
-        #[cfg(feature = "isolation")]
-        if dangerous_disable_asset_csp_modification.can_modify("style-src") {
-          if let tauri_utils::html::PatternObject::Isolation { .. } = &pattern {
-            // create the csp for the isolation iframe styling now, to make the runtime less complex
-            let mut hasher = Sha256::new();
-            hasher.update(tauri_utils::pattern::isolation::IFRAME_STYLE);
-            let hash = hasher.finalize();
-            csp_hashes.styles.push(format!(
-              "'sha256-{}'",
-              base64::engine::general_purpose::STANDARD.encode(hash)
-            ));
-          }
+          inject_script_hashes(&document, key, csp_hashes);
         }
 
         *input = serialize_html_node(&document);
@@ -101,15 +92,33 @@ fn map_isolation(
   _options: &AssetOptions,
   dir: PathBuf,
 ) -> impl Fn(&AssetKey, &Path, &mut Vec<u8>, &mut CspHashes) -> Result<(), EmbeddedAssetsError> {
-  move |_key, path, input, _csp_hashes| {
+  // create the csp for the isolation iframe styling now, to make the runtime less complex
+  let mut hasher = Sha256::new();
+  hasher.update(tauri_utils::pattern::isolation::IFRAME_STYLE);
+  let hash = hasher.finalize();
+  let iframe_style_csp_hash = format!(
+    "'sha256-{}'",
+    base64::engine::general_purpose::STANDARD.encode(hash)
+  );
+
+  move |key, path, input, csp_hashes| {
     if path.extension() == Some(OsStr::new("html")) {
-      let isolation_html = tauri_utils::html::parse(String::from_utf8_lossy(input).into_owned());
+      let isolation_html = parse_html(String::from_utf8_lossy(input).into_owned());
 
       // this is appended, so no need to reverse order it
       tauri_utils::html::inject_codegen_isolation_script(&isolation_html);
 
       // temporary workaround for windows not loading assets
       tauri_utils::html::inline_isolation(&isolation_html, &dir);
+
+      inject_nonce_token(
+        &isolation_html,
+        &tauri_utils::config::DisabledCspModificationKind::Flag(false),
+      );
+
+      inject_script_hashes(&isolation_html, key, csp_hashes);
+
+      csp_hashes.styles.push(iframe_style_csp_hash.clone());
 
       *input = isolation_html.to_string().as_bytes().to_vec()
     }
@@ -126,6 +135,7 @@ pub fn context_codegen(data: ContextData) -> Result<TokenStream, EmbeddedAssetsE
     config_parent,
     root,
     capabilities: additional_capabilities,
+    assets,
   } = data;
 
   let target = std::env::var("TARGET")
@@ -157,10 +167,13 @@ pub fn context_codegen(data: ContextData) -> Result<TokenStream, EmbeddedAssetsE
     options = options.with_csp();
   }
 
-  let assets = if dev && config.build.dev_url.is_some() {
-    Default::default()
+  let assets = if let Some(assets) = assets {
+    quote!(#assets)
+  } else if dev && config.build.dev_url.is_some() {
+    let assets = EmbeddedAssets::default();
+    quote!(#assets)
   } else {
-    match &config.build.frontend_dist {
+    let assets = match &config.build.frontend_dist {
       Some(url) => match url {
         FrontendDist::Url(_url) => Default::default(),
         FrontendDist::Directory(path) => {
@@ -184,7 +197,8 @@ pub fn context_codegen(data: ContextData) -> Result<TokenStream, EmbeddedAssetsE
         _ => unimplemented!(),
       },
       None => Default::default(),
-    }
+    };
+    quote!(#assets)
   };
 
   let out_dir = {
@@ -331,10 +345,10 @@ pub fn context_codegen(data: ContextData) -> Result<TokenStream, EmbeddedAssetsE
   let info_plist = quote!(());
 
   let pattern = match &options.pattern {
-    PatternKind::Brownfield => quote!(#root::Pattern::Brownfield(std::marker::PhantomData)),
+    PatternKind::Brownfield => quote!(#root::Pattern::Brownfield),
     #[cfg(not(feature = "isolation"))]
     PatternKind::Isolation { dir: _ } => {
-      quote!(#root::Pattern::Brownfield(std::marker::PhantomData))
+      quote!(#root::Pattern::Brownfield)
     }
     #[cfg(feature = "isolation")]
     PatternKind::Isolation { dir } => {
@@ -425,7 +439,8 @@ pub fn context_codegen(data: ContextData) -> Result<TokenStream, EmbeddedAssetsE
         CapabilityFile::Capability(c) => {
           capabilities.insert(c.identifier.clone(), c);
         }
-        CapabilityFile::List {
+        CapabilityFile::List(capabilities_list)
+        | CapabilityFile::NamedList {
           capabilities: capabilities_list,
         } => {
           capabilities.extend(
@@ -486,7 +501,7 @@ fn ico_icon<P: AsRef<Path>>(
   })?;
 
   let icon_file_name = icon_file_name.to_str().unwrap();
-  let icon = quote!(#root::Image::new(include_bytes!(concat!(std::env!("OUT_DIR"), "/", #icon_file_name)), #width, #height));
+  let icon = quote!(#root::image::Image::new(include_bytes!(concat!(std::env!("OUT_DIR"), "/", #icon_file_name)), #width, #height));
   Ok(icon)
 }
 
@@ -544,7 +559,7 @@ fn png_icon<P: AsRef<Path>>(
   })?;
 
   let icon_file_name = icon_file_name.to_str().unwrap();
-  let icon = quote!(#root::Image::new(include_bytes!(concat!(std::env!("OUT_DIR"), "/", #icon_file_name)), #width, #height));
+  let icon = quote!(#root::image::Image::new(include_bytes!(concat!(std::env!("OUT_DIR"), "/", #icon_file_name)), #width, #height));
   Ok(icon)
 }
 

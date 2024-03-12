@@ -429,7 +429,7 @@ pub trait WebviewDispatch<T: UserEvent>: Debug + Clone + Send + Sync + Sized + '
 
   // SETTER
 
-  /// Naviagte to the given URL.
+  /// Navigate to the given URL.
   fn navigate(&self, url: Url) -> Result<()>;
 
   /// Opens the dialog to prints the contents of the webview.
@@ -452,6 +452,9 @@ pub trait WebviewDispatch<T: UserEvent>: Debug + Clone + Send + Sync + Sized + '
 
   /// Moves the webview to the given window.
   fn reparent(&self, window_id: WindowId) -> Result<()>;
+
+  /// Sets whether the webview should automatically grow and shrink its size and position when the parent window resizes.
+  fn set_auto_resize(&self, auto_resize: bool) -> Result<()>;
 }
 
 /// Window dispatcher. A thread-safe handle to the window APIs.
@@ -514,7 +517,7 @@ pub trait WindowDispatch<T: UserEvent>: Debug + Clone + Send + Sync + Sized + 's
   /// - **Linux / iOS / Android:** Unsupported.
   fn is_maximizable(&self) -> Result<bool>;
 
-  /// Gets the window's native minize button state.
+  /// Gets the window's native minimize button state.
   ///
   /// ## Platform-specific
   ///

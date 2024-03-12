@@ -13,11 +13,9 @@ use clap::Parser;
 use handlebars::{to_json, Handlebars};
 use heck::{ToKebabCase, ToPascalCase, ToSnakeCase};
 use include_dir::{include_dir, Dir};
-use log::warn;
 use std::{
   collections::BTreeMap,
   env::current_dir,
-  ffi::OsStr,
   fs::{create_dir_all, remove_dir_all, File, OpenOptions},
   path::{Component, Path, PathBuf},
 };
@@ -28,7 +26,7 @@ pub const TEMPLATE_DIR: Dir<'_> = include_dir!("templates/plugin");
 #[clap(about = "Initialize a Tauri plugin project on an existing directory")]
 pub struct Options {
   /// Name of your Tauri plugin.
-  /// If not specified, it will be infered from the current directory.
+  /// If not specified, it will be inferred from the current directory.
   pub(crate) plugin_name: Option<String>,
   /// Initializes a Tauri plugin without the TypeScript API
   #[clap(long)]
@@ -80,7 +78,7 @@ pub fn command(mut options: Options) -> Result<()> {
   let template_target_path = PathBuf::from(options.directory);
   let metadata = crates_metadata()?;
   if std::fs::read_dir(&template_target_path)?.count() > 0 {
-    warn!("Plugin dir ({:?}) not empty.", template_target_path);
+    log::warn!("Plugin dir ({:?}) not empty.", template_target_path);
   } else {
     let (tauri_dep, tauri_example_dep, tauri_build_dep, tauri_plugin_dep) =
       if let Some(tauri_path) = options.tauri_path {
@@ -269,7 +267,7 @@ pub fn generate_android_out_file(
   options.write(true);
 
   #[cfg(unix)]
-  if path.file_name().unwrap() == OsStr::new("gradlew") {
+  if path.file_name().unwrap() == std::ffi::OsStr::new("gradlew") {
     use std::os::unix::fs::OpenOptionsExt;
     options.mode(0o755);
   }

@@ -1,5 +1,30 @@
 # Changelog
 
+## \[2.0.0-beta.9]
+
+### Dependencies
+
+- Upgraded to `tauri-codegen@2.0.0-beta.9`
+- Upgraded to `tauri-utils@2.0.0-beta.9`
+
+## \[2.0.0-beta.8]
+
+### Dependencies
+
+- Upgraded to `tauri-utils@2.0.0-beta.8`
+- Upgraded to `tauri-codegen@2.0.0-beta.8`
+
+## \[2.0.0-beta.7]
+
+### Bug Fixes
+
+- [`bb23511ea`](https://www.github.com/tauri-apps/tauri/commit/bb23511ea80bcaffbdebf057301e463fff268c90)([#9079](https://www.github.com/tauri-apps/tauri/pull/9079)) Fixed generation of capability schema for permissions field which previously disallowed mixed (strings and objects) permission definition.
+
+### Dependencies
+
+- Upgraded to `tauri-utils@2.0.0-beta.7`
+- Upgraded to `tauri-codegen@2.0.0-beta.7`
+
 ## \[2.0.0-beta.6]
 
 ### Dependencies

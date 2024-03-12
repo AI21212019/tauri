@@ -571,7 +571,7 @@ tauri::Builder::default()
       .on_page_load_handler
       .replace(Box::new(move |url, event| {
         if let Some(w) = manager_.get_webview(&label_) {
-          if let PageLoadEvent::Finished = event {
+          if let PageLoadEvent::Started = event {
             w.unlisten_all_js();
           }
           if let Some(handler) = self.on_page_load_handler.as_ref() {
@@ -896,42 +896,27 @@ impl<R: Runtime> Webview<R> {
 
   /// Closes this webview.
   pub fn close(&self) -> crate::Result<()> {
-    let window = self.window();
-    if window.is_webview_window() {
-      window.close()
-    } else {
-      self.webview.dispatcher.close()?;
-      self.manager().on_webview_close(self.label());
-      Ok(())
-    }
+    self.webview.dispatcher.close()?;
+    self.manager().on_webview_close(self.label());
+    Ok(())
   }
 
   /// Resizes this webview.
   pub fn set_size<S: Into<Size>>(&self, size: S) -> crate::Result<()> {
-    let window = self.window();
-    if window.is_webview_window() {
-      window.set_size(size.into())
-    } else {
-      self
-        .webview
-        .dispatcher
-        .set_size(size.into())
-        .map_err(Into::into)
-    }
+    self
+      .webview
+      .dispatcher
+      .set_size(size.into())
+      .map_err(Into::into)
   }
 
   /// Sets this webviews's position.
   pub fn set_position<Pos: Into<Position>>(&self, position: Pos) -> crate::Result<()> {
-    let window = self.window();
-    if window.is_webview_window() {
-      window.set_position(position.into())
-    } else {
-      self
-        .webview
-        .dispatcher
-        .set_position(position.into())
-        .map_err(Into::into)
-    }
+    self
+      .webview
+      .dispatcher
+      .set_position(position.into())
+      .map_err(Into::into)
   }
 
   /// Focus the webview.
@@ -941,14 +926,26 @@ impl<R: Runtime> Webview<R> {
 
   /// Move the webview to the given window.
   pub fn reparent(&self, window: &Window<R>) -> crate::Result<()> {
-    let current_window = self.window();
-    if current_window.is_webview_window() || window.is_webview_window() {
-      Err(crate::Error::CannotReparentWebviewWindow)
-    } else {
-      self.webview.dispatcher.reparent(window.window.id)?;
-      *self.window_label.lock().unwrap() = window.label().to_string();
-      Ok(())
+    #[cfg(not(feature = "unstable"))]
+    {
+      let current_window = self.window();
+      if current_window.is_webview_window() || window.is_webview_window() {
+        return Err(crate::Error::CannotReparentWebviewWindow);
+      }
     }
+
+    self.webview.dispatcher.reparent(window.window.id)?;
+    *self.window_label.lock().unwrap() = window.label().to_string();
+    Ok(())
+  }
+
+  /// Sets whether the webview should automatically grow and shrink its size and position when the parent window resizes.
+  pub fn set_auto_resize(&self, auto_resize: bool) -> crate::Result<()> {
+    self
+      .webview
+      .dispatcher
+      .set_auto_resize(auto_resize)
+      .map_err(Into::into)
   }
 
   /// Returns the webview position.
@@ -956,22 +953,12 @@ impl<R: Runtime> Webview<R> {
   /// - For child webviews, returns the position of the top-left hand corner of the webviews's client area relative to the top-left hand corner of the parent window.
   /// - For webview window, returns the inner position of the window.
   pub fn position(&self) -> crate::Result<PhysicalPosition<i32>> {
-    let window = self.window();
-    if window.is_webview_window() {
-      window.inner_position()
-    } else {
-      self.webview.dispatcher.position().map_err(Into::into)
-    }
+    self.webview.dispatcher.position().map_err(Into::into)
   }
 
   /// Returns the physical size of the webviews's client area.
   pub fn size(&self) -> crate::Result<PhysicalSize<u32>> {
-    let window = self.window();
-    if window.is_webview_window() {
-      window.inner_size()
-    } else {
-      self.webview.dispatcher.size().map_err(Into::into)
-    }
+    self.webview.dispatcher.size().map_err(Into::into)
   }
 }
 
@@ -1150,19 +1137,17 @@ fn main() {
       Origin::Local
     } else {
       Origin::Remote {
-        url: current_url.to_string(),
+        url: current_url.clone(),
       }
     };
     let (resolved_acl, has_app_acl_manifest) = {
       let runtime_authority = manager.runtime_authority.lock().unwrap();
-      let acl = runtime_authority
-        .resolve_access(
-          &request.cmd,
-          message.webview.window().label(),
-          message.webview.label(),
-          &acl_origin,
-        )
-        .cloned();
+      let acl = runtime_authority.resolve_access(
+        &request.cmd,
+        message.webview.window().label(),
+        message.webview.label(),
+        &acl_origin,
+      );
       (acl, runtime_authority.has_app_manifest())
     };
 
@@ -1312,7 +1297,7 @@ fn main() {
       id,
     ))?;
 
-    listeners.unlisten_js(id);
+    listeners.unlisten_js(event, id);
 
     Ok(())
   }
