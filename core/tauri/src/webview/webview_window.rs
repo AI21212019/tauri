@@ -4,22 +4,25 @@
 
 //! [`Window`] that hosts a single [`Webview`].
 
-use std::{borrow::Cow, path::PathBuf, sync::Arc};
+use std::{
+  borrow::Cow,
+  path::PathBuf,
+  sync::{Arc, MutexGuard},
+};
 
 use crate::{
   event::EventTarget,
-  runtime::window::dpi::{PhysicalPosition, PhysicalSize},
+  runtime::dpi::{PhysicalPosition, PhysicalSize},
   window::Monitor,
+  ResourceTable,
 };
 #[cfg(desktop)]
 use crate::{
   image::Image,
   menu::{ContextMenu, Menu},
   runtime::{
-    window::{
-      dpi::{Position, Size},
-      CursorIcon,
-    },
+    dpi::{Position, Size},
+    window::CursorIcon,
     UserAttentionType,
   },
 };
@@ -792,10 +795,10 @@ fn main() {
     self
   }
 
-  /// Disables the file drop handler. This is required to use drag and drop APIs on the front end on Windows.
+  /// Disables the drag and drop handler. This is required to use HTML5 drag and drop APIs on the frontend on Windows.
   #[must_use]
-  pub fn disable_file_drop_handler(mut self) -> Self {
-    self.webview_builder = self.webview_builder.disable_file_drop_handler();
+  pub fn disable_drag_drop_handler(mut self) -> Self {
+    self.webview_builder = self.webview_builder.disable_drag_drop_handler();
     self
   }
 
@@ -833,6 +836,21 @@ fn main() {
   #[must_use]
   pub fn proxy_url(mut self, url: Url) -> Self {
     self.webview_builder = self.webview_builder.proxy_url(url);
+    self
+  }
+
+  /// Whether page zooming by hotkeys is enabled
+  ///
+  /// ## Platform-specific:
+  ///
+  /// - **Windows**: Controls WebView2's [`IsZoomControlEnabled`](https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/winrt/microsoft_web_webview2_core/corewebview2settings?view=webview2-winrt-1.0.2420.47#iszoomcontrolenabled) setting.
+  /// - **MacOS / Linux**: Injects a polyfill that zooms in and out with `ctrl/command` + `-/=`,
+  /// 20% in each step, ranging from 20% to 1000%. Requires `webview:allow-set-webview-zoom` permission
+  ///
+  /// - **Android / iOS**: Unsupported.
+  #[must_use]
+  pub fn zoom_hotkeys_enabled(mut self, enabled: bool) -> Self {
+    self.webview_builder = self.webview_builder.zoom_hotkeys_enabled(enabled);
     self
   }
 }
@@ -1703,6 +1721,17 @@ tauri::Builder::default()
   pub fn is_devtools_open(&self) -> bool {
     self.webview.is_devtools_open()
   }
+
+  /// Set the webview zoom level
+  ///
+  /// ## Platform-specific:
+  ///
+  /// - **Android**: Not supported.
+  /// - **macOS**: available on macOS 11+ only.
+  /// - **iOS**: available on iOS 14+ only.
+  pub fn set_zoom(&self, scale_factor: f64) -> crate::Result<()> {
+    self.webview.set_zoom(scale_factor)
+  }
 }
 
 /// Event system APIs.
@@ -1792,7 +1821,15 @@ tauri::Builder::default()
   }
 }
 
-impl<R: Runtime> Manager<R> for WebviewWindow<R> {}
+impl<R: Runtime> Manager<R> for WebviewWindow<R> {
+  fn resources_table(&self) -> MutexGuard<'_, ResourceTable> {
+    self
+      .webview
+      .resources_table
+      .lock()
+      .expect("poisoned window resources table")
+  }
+}
 
 impl<R: Runtime> ManagerBase<R> for WebviewWindow<R> {
   fn manager(&self) -> &AppManager<R> {

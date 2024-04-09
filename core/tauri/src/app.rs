@@ -13,6 +13,7 @@ use crate::{
     AppManager, Asset,
   },
   plugin::{Plugin, PluginStore},
+  resources::ResourceTable,
   runtime::{
     window::{WebviewEvent as RuntimeWebviewEvent, WindowEvent as RuntimeWindowEvent},
     ExitRequestedEventAction, RunEvent as RuntimeRunEvent,
@@ -35,10 +36,8 @@ use tauri_macros::default_runtime;
 #[cfg(desktop)]
 use tauri_runtime::EventLoopProxy;
 use tauri_runtime::{
-  window::{
-    dpi::{PhysicalPosition, PhysicalSize},
-    FileDropEvent,
-  },
+  dpi::{PhysicalPosition, PhysicalSize},
+  window::DragDropEvent,
   RuntimeInitArgs,
 };
 use tauri_utils::PackageInfo;
@@ -47,7 +46,7 @@ use std::{
   borrow::Cow,
   collections::HashMap,
   fmt,
-  sync::{mpsc::Sender, Arc},
+  sync::{mpsc::Sender, Arc, MutexGuard},
 };
 
 use crate::{event::EventId, runtime::RuntimeHandle, Event, EventTarget};
@@ -132,8 +131,8 @@ pub enum WindowEvent {
     /// The window inner size.
     new_inner_size: PhysicalSize<u32>,
   },
-  /// An event associated with the file drop action.
-  FileDrop(FileDropEvent),
+  /// An event associated with the drag and drop action.
+  DragDrop(DragDropEvent),
   /// The system window theme has changed. Only delivered if the window [`theme`](`crate::window::WindowBuilder#method.theme`) is `None`.
   ///
   /// Applications might wish to react to this to change the theme of the content of the window when the system changes the window theme.
@@ -161,7 +160,7 @@ impl From<RuntimeWindowEvent> for WindowEvent {
         scale_factor,
         new_inner_size,
       },
-      RuntimeWindowEvent::FileDrop(event) => Self::FileDrop(event),
+      RuntimeWindowEvent::DragDrop(event) => Self::DragDrop(event),
       RuntimeWindowEvent::ThemeChanged(theme) => Self::ThemeChanged(theme),
     }
   }
@@ -171,14 +170,14 @@ impl From<RuntimeWindowEvent> for WindowEvent {
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum WebviewEvent {
-  /// An event associated with the file drop action.
-  FileDrop(FileDropEvent),
+  /// An event associated with the drag and drop action.
+  DragDrop(DragDropEvent),
 }
 
 impl From<RuntimeWebviewEvent> for WebviewEvent {
   fn from(event: RuntimeWebviewEvent) -> Self {
     match event {
-      RuntimeWebviewEvent::FileDrop(e) => Self::FileDrop(e),
+      RuntimeWebviewEvent::DragDrop(e) => Self::DragDrop(e),
     }
   }
 }
@@ -418,7 +417,12 @@ impl<R: Runtime> AppHandle<R> {
   }
 }
 
-impl<R: Runtime> Manager<R> for AppHandle<R> {}
+impl<R: Runtime> Manager<R> for AppHandle<R> {
+  fn resources_table(&self) -> MutexGuard<'_, ResourceTable> {
+    self.manager.resources_table()
+  }
+}
+
 impl<R: Runtime> ManagerBase<R> for AppHandle<R> {
   fn manager(&self) -> &AppManager<R> {
     &self.manager
@@ -459,7 +463,12 @@ impl<R: Runtime> fmt::Debug for App<R> {
   }
 }
 
-impl<R: Runtime> Manager<R> for App<R> {}
+impl<R: Runtime> Manager<R> for App<R> {
+  fn resources_table(&self) -> MutexGuard<'_, ResourceTable> {
+    self.manager.resources_table()
+  }
+}
+
 impl<R: Runtime> ManagerBase<R> for App<R> {
   fn manager(&self) -> &AppManager<R> {
     &self.manager
@@ -745,7 +754,6 @@ macro_rules! shared_app_impl {
       pub fn cleanup_before_exit(&self) {
         #[cfg(all(desktop, feature = "tray-icon"))]
         self.manager.tray.icons.lock().unwrap().clear();
-        self.resources_table().clear();
       }
     }
 
@@ -1392,7 +1400,7 @@ tauri::Builder::default()
   /// ```
   /// tauri::Builder::default()
   ///   .on_webview_event(|window, event| match event {
-  ///     tauri::WebviewEvent::FileDrop(event) => {
+  ///     tauri::WebviewEvent::DragDrop(event) => {
   ///       println!("{:?}", event);
   ///     }
   ///     _ => {}
