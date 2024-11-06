@@ -1,5 +1,10 @@
 ---
-tauri-bundler: patch:enhance
+"tauri-bundler": "minor:feat"
+"tauri-cli": "minor:feat"
+"@tauri-apps/cli": "minor:feat"
+"tauri-utils": "minor:feat"
 ---
 
-Reduced the compression level for rpm bundles from 9 (max) to 6. This has almost no effect on file size but should reduce build time by roughly 25%.
+Add `bundle > linux > rpm > compression` config option to control RPM bundle compression type and level.
+
+

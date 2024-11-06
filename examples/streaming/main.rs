@@ -6,85 +6,22 @@
 
 use http::{header::*, response::Builder as ResponseBuilder, status::StatusCode};
 use http_range::HttpRange;
-use std::sync::{Arc, Mutex};
 use std::{
   io::{Read, Seek, SeekFrom, Write},
   path::PathBuf,
   process::{Command, Stdio},
 };
 
-fn main() {
-  let video_file = PathBuf::from("test_video.mp4");
-  let video_url =
-    "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
-
-  if !video_file.exists() {
-    // Downloading with curl this saves us from adding
-    // a Rust HTTP client dependency.
-    println!("Downloading {video_url}");
-    let status = Command::new("curl")
-      .arg("-L")
-      .arg("-o")
-      .arg(&video_file)
-      .arg(video_url)
-      .stdout(Stdio::inherit())
-      .stderr(Stdio::inherit())
-      .output()
-      .unwrap();
-
-    assert!(status.status.success());
-    assert!(video_file.exists());
-  }
-
-  // NOTE: for production use `rand` crate to generate a random boundary
-  let boundary_id = Arc::new(Mutex::new(0));
-
-  tauri::Builder::default()
-    .invoke_handler(tauri::generate_handler![video_uri])
-    .register_asynchronous_uri_scheme_protocol("stream", move |_app, request, responder| {
-      match get_stream_response(request, &boundary_id) {
-        Ok(http_response) => responder.respond(http_response),
-        Err(e) => responder.respond(
-          ResponseBuilder::new()
-            .status(StatusCode::BAD_REQUEST)
-            .header(CONTENT_TYPE, "text/plain")
-            .body(e.to_string().as_bytes().to_vec())
-            .unwrap(),
-        ),
-      }
-    })
-    .run(tauri::generate_context!(
-      "../../examples/streaming/tauri.conf.json"
-    ))
-    .expect("error while running tauri application");
-}
-
-// returns the scheme and the path of the video file
-// we're using this just to allow using the custom `stream` protocol or tauri built-in `asset` protocol
-#[tauri::command]
-fn video_uri() -> (&'static str, std::path::PathBuf) {
-  #[cfg(feature = "protocol-asset")]
-  {
-    let mut path = std::env::current_dir().unwrap();
-    path.push("test_video.mp4");
-    ("asset", path)
-  }
-
-  #[cfg(not(feature = "protocol-asset"))]
-  ("stream", "test_video.mp4".into())
-}
-
 fn get_stream_response(
   request: http::Request<Vec<u8>>,
-  boundary_id: &Arc<Mutex<i32>>,
 ) -> Result<http::Response<Vec<u8>>, Box<dyn std::error::Error>> {
   // skip leading `/`
   let path = percent_encoding::percent_decode(request.uri().path()[1..].as_bytes())
     .decode_utf8_lossy()
     .to_string();
 
-  if path != "test_video.mp4" {
-    // return error 404 if it's not our video
+  // return error 404 if it's not our video
+  if path != "streaming_example_test_video.mp4" {
     return Ok(ResponseBuilder::new().status(404).body(Vec::new())?);
   }
 
@@ -101,7 +38,6 @@ fn get_stream_response(
   let mut resp = ResponseBuilder::new().header(CONTENT_TYPE, "video/mp4");
 
   // if the webview sent a range header, we need to send a 206 in return
-  // Actually only macOS and Windows are supported. Linux will ALWAYS return empty headers.
   let http_response = if let Some(range_header) = request.headers().get("range") {
     let not_satisfiable = || {
       ResponseBuilder::new()
@@ -171,9 +107,7 @@ fn get_stream_response(
         })
         .collect::<Vec<_>>();
 
-      let mut id = boundary_id.lock().unwrap();
-      *id += 1;
-      let boundary = format!("sadasq2e{id}");
+      let boundary = random_boundary();
       let boundary_sep = format!("\r\n--{boundary}\r\n");
       let boundary_closer = format!("\r\n--{boundary}\r\n");
 
@@ -214,4 +148,62 @@ fn get_stream_response(
   };
 
   http_response.map_err(Into::into)
+}
+
+fn random_boundary() -> String {
+  let mut x = [0_u8; 30];
+  getrandom::getrandom(&mut x).expect("failed to get random bytes");
+  (x[..])
+    .iter()
+    .map(|&x| format!("{x:x}"))
+    .fold(String::new(), |mut a, x| {
+      a.push_str(x.as_str());
+      a
+    })
+}
+
+fn download_video() {
+  let video_file = PathBuf::from("streaming_example_test_video.mp4");
+  if !video_file.exists() {
+    let video_url =
+      "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
+
+    // Downloading with curl this saves us from adding
+    // a Rust HTTP client dependency.
+    println!("Downloading {video_url}");
+    let status = Command::new("curl")
+      .arg("-L")
+      .arg("-o")
+      .arg(&video_file)
+      .arg(video_url)
+      .stdout(Stdio::inherit())
+      .stderr(Stdio::inherit())
+      .output()
+      .unwrap();
+
+    assert!(status.status.success());
+    assert!(video_file.exists());
+  }
+}
+
+fn main() {
+  download_video();
+
+  tauri::Builder::default()
+    .register_asynchronous_uri_scheme_protocol("stream", move |_ctx, request, responder| {
+      match get_stream_response(request) {
+        Ok(http_response) => responder.respond(http_response),
+        Err(e) => responder.respond(
+          ResponseBuilder::new()
+            .status(StatusCode::INTERNAL_SERVER_ERROR)
+            .header(CONTENT_TYPE, "text/plain")
+            .body(e.to_string().as_bytes().to_vec())
+            .unwrap(),
+        ),
+      }
+    })
+    .run(tauri::generate_context!(
+      "../../examples/streaming/tauri.conf.json"
+    ))
+    .expect("error while running tauri application");
 }
