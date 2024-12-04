@@ -2380,7 +2380,6 @@ name = "dialoguer"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "658bce805d770f407bc62102fca7c2c64ceef2fbcb2b8bd19d2765ce093980de"
-
 dependencies = [
  "console",
  "shell-words",
@@ -2418,7 +2417,6 @@ name = "dirs"
 version = "5.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "44c45a9d03d6676652bcb5e724c7e988de1acad23a711b5217ab9cbecbec2225"
-
 dependencies = [
  "dirs-sys",
 ]
@@ -3226,7 +3224,6 @@ name = "gdk-pixbuf-sys"
 version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f9839ea644ed9c97a34d129ad56d38a25e6756f99f3a88e15cd39c20629caf7"
-
 dependencies = [
  "gio-sys",
  "glib-sys",
@@ -7506,9 +7503,9 @@ dependencies = [
 
 [[package]]
 name = "rsa"
-version = "0.9.6"
+version = "0.9.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d0e5124fcb30e76a7e79bfee683a2746db83784b86289f6251b54b7950a0dfc"
+checksum = "47c75d7c5c6b673e58bf54d8544a9f432e3a925b0e80f7cd3602ab5c50c55519"
 dependencies = [
  "const-oid",
  "digest",
